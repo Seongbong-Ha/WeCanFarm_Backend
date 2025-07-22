@@ -13,5 +13,4 @@ class DetectionResult(BaseModel):
         fields = {'class_': 'class'}  # JSON 필드명으로는 'class' 사용
 
 class AnalyzeResponse(BaseModel):
-    result_image_base64: str               # 감지 결과가 표시된 이미지
-    detections: List[DetectionResult]      # 감지된 객체 리스트
+    image_base64: str  # 서버에서 바운딩박스 + 라벨을 덮은 최종 이미지

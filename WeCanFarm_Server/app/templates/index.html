@@ -1,14 +1,29 @@
+<!-- templates/index.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Index</title>
+    <title>이미지 업로드 및 분석</title>
 </head>
 <body>
-    <form action="/result" method="post">
-        <input type="text" name="content" placeholder="내용을 입력하세요...">
-        <button type="submit">제출</button>
+    <h2>이미지 업로드</h2>
+    <form id="upload-form" action="/analyze_web" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept="image/*" onchange="previewImage(event)">
+        <br><br>
+        <img id="preview" src="#" alt="이미지 미리보기" style="max-width:300px; display:none;"/>
+        <br><br>
+        <button type="submit">분석하기</button>
     </form>
+
+    <script>
+        function previewImage(event) {
+            const reader = new FileReader();
+            reader.onload = function(){
+                const output = document.getElementById('preview');
+                output.src = reader.result;
+                output.style.display = "block";
+            };
+            reader.readAsDataURL(event.target.files[0]);
+        }
+    </script>
 </body>
 </html>

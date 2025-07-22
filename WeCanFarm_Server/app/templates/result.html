@@ -1,12 +1,20 @@
+<!-- templates/result.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Result</title>
+    <title>분석 결과</title>
 </head>
 <body>
-    <h1>입력한 내용:</h1>
-    <p>{{ content }}</p>
+    <h2>분석 결과</h2>
+
+    <!-- 분석 이미지 출력 -->
+    <img src="data:image/jpeg;base64,{{ image_base64 }}" alt="분석 결과 이미지" style="max-width: 300px;"><br><br>
+
+    <!-- 분석 결과 텍스트 출력 -->
+    <p><strong>작물 종류:</strong> {{ result.crop_type }}</p>
+    <p><strong>질병 상태:</strong> {{ result.disease_status }}</p>
+
+    <br>
+    <a href="/">다시 분석하기</a>
 </body>
 </html>
