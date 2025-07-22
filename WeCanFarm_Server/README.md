@@ -21,10 +21,10 @@ SVenv\Scripts\activate
 source SVenv/bin/activate
 
 
-### 2. 패키지 설치
+# 패키지 설치
 pip install -r requirements.txt
 
-### 3. fastAPI 서버 실행
+# fastAPI 서버 실행
 uvicorn main:app --reload
 → http://127.0.0.1:8000 접속
 → 이미지 업로드 → AI 모델 추론 결과 확인
