@@ -25,7 +25,9 @@ source SVenv/bin/activate
 pip install -r requirements.txt
 
 # fastAPI 서버 실행
-uvicorn main:app --reload
+(WeCanFarm_Backend폴더 내부에서)
+ngrok http --url=driven-sweeping-sheep.ngrok-free.app 8000
+uvicorn WeCanFarm_Server.app.main:app --reload
 → http://127.0.0.1:8000 접속
 → 이미지 업로드 → AI 모델 추론 결과 확인
 
