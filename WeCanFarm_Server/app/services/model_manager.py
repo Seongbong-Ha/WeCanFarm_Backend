@@ -16,7 +16,7 @@ class ModelManager:
     
     def _load_pepper_model(self):
         """고추 모델 로드"""
-        model_path = 'WeCanFarm_Server/app/models/pepper_disease_model.keras'
+        model_path = os.path.join(os.path.dirname(__file__), '../models/pepper_disease_model.keras')
         try:
             self.models['pepper'] = tf.keras.models.load_model(model_path, compile=False)
             print("✅ 고추 모델 로딩 성공")
