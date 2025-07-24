@@ -1,10 +1,8 @@
-# services/pipeline.py
+# app/services/pipeline.py
 from PIL import Image
 from typing import List, Dict
 from ..utils.image_handler import (
-    mock_yolo_detection, 
-    crop_image, 
-    draw_bounding_boxes, 
+    yolo_detection,
     image_to_base64,
     validate_image,
     prepare_image_for_model
@@ -13,12 +11,12 @@ from .inference import run_resnet_inference
 
 def process_image_pipeline(image: Image.Image) -> dict:
     """
-    전체 이미지 처리 파이프라인
+    전체 이미지 처리 파이프라인 (바운딩박스 표시 없이)
     Args:
         image: 입력 이미지
     Returns:
         {
-            "image_base64": "바운딩박스가 그려진 최종 이미지",
+            "image_base64": "원본 이미지",
             "detections": [감지 결과 리스트],
             "total_detections": 총 감지 개수,
             "processing_status": "성공/실패"
@@ -34,41 +32,38 @@ def process_image_pipeline(image: Image.Image) -> dict:
                 "processing_status": "이미지 유효성 검사 실패"
             }
         
-        # 2. YOLO 객체 감지 (현재는 Mock)
-        yolo_detections = mock_yolo_detection(image)
+        # 2. YOLO 객체 감지
+        yolo_detections = yolo_detection(image)
         
-        # 3. 각 감지된 객체별로 질병 분류
+        # 3. 각 감지된 객체별로 질병 분류 (전체 이미지 사용)
         final_detections = []
         
-        for detection in yolo_detections:
-            bbox = detection["bbox"]
-            crop_type = detection["crop_type"]
-            yolo_confidence = detection["confidence"]
+        if len(yolo_detections) > 0:
+            # 전체 이미지로 한 번만 ResNet 추론 (효율성)
+            print("🔍 전체 이미지로 질병 분류 실행")
+            disease_result = run_resnet_inference(image, 'pepper')
             
-            # 3.1. 바운딩박스로 이미지 크롭
-            cropped_image = crop_image(image, bbox)
-            
-            # 3.2. 크롭된 이미지가 너무 작으면 스킵
-            if cropped_image.size[0] < 32 or cropped_image.size[1] < 32:
-                continue
-            
-            # 3.3. ResNet으로 질병 분류
-            disease_result = run_resnet_inference(cropped_image, crop_type)
-            
-            # 3.4. 결과 통합
-            final_detection = {
-                "bbox": bbox,
-                "crop_type": crop_type,
-                "disease_status": disease_result.get("disease_status", "알 수 없음"),
-                "disease_confidence": disease_result.get("confidence", 0.0),
-                "yolo_confidence": yolo_confidence,
-                "label": f"{crop_type}: {disease_result.get('disease_status', '알 수 없음')}"
-            }
-            
-            final_detections.append(final_detection)
+            for detection in yolo_detections:
+                bbox = detection["bbox"]
+                crop_type = detection["crop_type"]
+                yolo_confidence = detection["confidence"]
+                
+                # 모든 감지된 객체에 동일한 질병 분류 결과 적용
+                final_detection = {
+                    "bbox": bbox,
+                    "crop_type": crop_type,
+                    "disease_status": disease_result.get("disease_status", "알 수 없음"),
+                    "disease_confidence": disease_result.get("confidence", 0.0),
+                    "yolo_confidence": yolo_confidence,
+                    "label": f"{crop_type}: {disease_result.get('disease_status', '알 수 없음')}"
+                }
+                
+                final_detections.append(final_detection)
+                print(f"🔍 감지 객체 #{len(final_detections)}: {detection['crop_type']} - {disease_result.get('disease_status', '알 수 없음')}")
         
-        # 4. 원본 이미지에 바운딩박스 + 라벨 그리기
-        result_image = draw_bounding_boxes(image, final_detections)
+        # 4. 원본 이미지를 그대로 사용 (바운딩박스 그리기 제거)
+        result_image = image
+        print(f"✅ 원본 이미지 사용: {len(final_detections)}개 객체 감지됨")
         
         # 5. 결과 이미지를 base64로 인코딩
         result_base64 = image_to_base64(result_image)
@@ -91,7 +86,7 @@ def process_image_pipeline(image: Image.Image) -> dict:
 
 def process_single_crop_analysis(image: Image.Image, crop_type: str = 'pepper') -> dict:
     """
-    단일 작물 분석 (기존 방식 호환용)
+    단일 작물 분석 (기존 방식 호환용) - 전체 이미지로 분석
     Args:
         image: 입력 이미지
         crop_type: 작물 타입
@@ -105,8 +100,11 @@ def process_single_crop_analysis(image: Image.Image, crop_type: str = 'pepper') 
                 "disease_status": "이미지 유효성 검사 실패"
             }
         
-        # ResNet으로 직접 분석 (YOLO 없이)
+        # ResNet으로 전체 이미지 직접 분석 (YOLO 없이)
+        print(f"🔍 단일 분석: 전체 이미지로 {crop_type} 질병 분류")
         result = run_resnet_inference(image, crop_type)
+        
+        print(f"✅ 단일 분석 완료: {result.get('disease_status', '알 수 없음')}")
         return result
         
     except Exception as e:

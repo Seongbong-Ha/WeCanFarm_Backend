@@ -1,9 +1,27 @@
-# utils/image_handler.py
+# app/utils/image_handler.py
 import base64
+import os
+import numpy as np
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-from typing import List, Tuple
-import os
+from typing import List, Tuple, Dict
+
+# YOLO 모델 전역 변수 (한 번만 로드)
+_yolo_model = None
+
+def load_yolo_model():
+    """YOLO Segmentation 모델 로드 (서버 시작시 한 번만)"""
+    global _yolo_model
+    if _yolo_model is None:
+        try:
+            from ultralytics import YOLO
+            model_path = os.path.join(os.path.dirname(__file__), '../models/yolo_v1.pt')
+            _yolo_model = YOLO(model_path)
+            print("✅ YOLO Segmentation 모델 로딩 성공")
+        except Exception as e:
+            print(f"❌ YOLO Segmentation 모델 로딩 실패: {e}")
+            _yolo_model = None
+    return _yolo_model
 
 def decode_base64_to_image(base64_str: str) -> Image.Image:
     """base64 문자열을 PIL Image로 디코딩"""
@@ -22,24 +40,6 @@ def image_to_base64(image: Image.Image, format: str = "JPEG") -> str:
     image.save(buffered, format=format)
     encoded_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
     return encoded_string
-
-def crop_image(image: Image.Image, bbox: List[int]) -> Image.Image:
-    """바운딩박스로 이미지 크롭
-    Args:
-        image: 원본 이미지
-        bbox: [x1, y1, x2, y2] 형태의 바운딩박스 좌표
-    Returns:
-        크롭된 이미지
-    """
-    x1, y1, x2, y2 = bbox
-    # 좌표가 이미지 범위를 벗어나지 않도록 클리핑
-    width, height = image.size
-    x1 = max(0, min(x1, width))
-    y1 = max(0, min(y1, height))
-    x2 = max(0, min(x2, width))
-    y2 = max(0, min(y2, height))
-    
-    return image.crop((x1, y1, x2, y2))
 
 def draw_bounding_boxes(image: Image.Image, detections: List[dict], font_size: int = 20) -> Image.Image:
     """이미지에 바운딩박스와 라벨을 그리기
@@ -173,28 +173,110 @@ def prepare_image_for_model(image: Image.Image, target_size: Tuple[int, int] = (
     
     return image
 
-# YOLO 통합을 위한 Mock 함수 (실제 YOLO 모델 완성 시 교체)
-def mock_yolo_detection(image: Image.Image) -> List[dict]:
-    """YOLO 완성 전까지 사용할 더미 감지 함수
+def yolo_detection(image: Image.Image) -> List[dict]:
+    """
+    YOLO Segmentation 감지 메인 함수
     Args:
         image: 입력 이미지
     Returns:
-        더미 감지 결과
+        감지된 객체 리스트 (빈 리스트 가능)
     """
-    width, height = image.size
-    
-    # 더미 바운딩박스 생성 (이미지 크기에 비례)
-    mock_detections = [
-        {
-            "bbox": [int(width*0.2), int(height*0.2), int(width*0.6), int(height*0.7)],
-            "crop_type": "pepper",
-            "confidence": 0.85
-        },
-        {
-            "bbox": [int(width*0.5), int(height*0.1), int(width*0.9), int(height*0.5)],
-            "crop_type": "pepper", 
-            "confidence": 0.72
-        }
-    ]
-    
-    return mock_detections
+    try:
+        # YOLO 모델 로드
+        model = load_yolo_model()
+        if model is None:
+            print("❌ YOLO 모델이 로드되지 않았습니다.")
+            return []
+        
+        # 이미지를 RGB로 변환 (YOLO 입력용)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        print(f"🔍 YOLO Segmentation 추론 시작 - 이미지 크기: {image.size}")
+        
+        # YOLO Segmentation 추론 실행
+        results = model(image, verbose=False)
+        
+        # 원본 감지 결과 수집
+        raw_detections = []
+        image_width, image_height = image.size
+        
+        for result in results:
+            boxes = result.boxes    # 바운딩박스 (Detection 결과)
+            masks = result.masks    # 마스크 (Segmentation 결과)
+            
+            if boxes is not None and len(boxes) > 0:
+                print(f"🔍 감지된 객체 수: {len(boxes)}")
+                
+                for i, box in enumerate(boxes):
+                    # 바운딩박스 좌표
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    
+                    # 신뢰도
+                    confidence = float(box.conf[0].cpu().numpy())
+                    
+                    # 클래스
+                    cls_id = int(box.cls[0].cpu().numpy())
+                    
+                    # 마스크 정보 (옵션)
+                    mask_data = None
+                    if masks is not None and i < len(masks):
+                        mask_data = masks[i].data.cpu().numpy()
+                    
+                    detection = {
+                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                        "crop_type": "pepper",
+                        "confidence": confidence
+                    }
+                    raw_detections.append(detection)
+            else:
+                print("🔍 감지된 박스가 없음")
+        
+        # 간단한 3단계 필터링 (하드코딩)
+        if raw_detections:
+            # 1단계: 신뢰도 필터링 (50% 이상)
+            confidence_filtered = []
+            for detection in raw_detections:
+                if detection["confidence"] >= 0.5:
+                    confidence_filtered.append(detection)
+                    print(f"🔍 1차 통과: 신뢰도 {detection['confidence']:.2f}")
+                else:
+                    print(f"❌ 1차 탈락: 신뢰도 {detection['confidence']:.2f}")
+            
+            # 2단계: 크기 필터링 (0.5% ~ 80% 범위)
+            size_filtered = []
+            total_area = image_width * image_height
+            
+            for detection in confidence_filtered:
+                bbox = detection["bbox"]
+                x1, y1, x2, y2 = bbox
+                bbox_area = (x2 - x1) * (y2 - y1)
+                area_ratio = bbox_area / total_area
+                
+                # 최소 크기 < 박스 크기 < 최대 크기
+                if 0.005 <= area_ratio <= 1.0:  # 0.5% ~ 80%
+                    size_filtered.append(detection)
+                    print(f"🔍 2차 통과: 크기비율 {area_ratio:.3f}")
+                elif area_ratio < 0.005:
+                    print(f"❌ 2차 탈락(너무 작음): 크기비율 {area_ratio:.3f}")
+                else:
+                    print(f"❌ 2차 탈락(너무 큼): 크기비율 {area_ratio:.3f}")
+            
+            # 3단계: 신뢰도 순 정렬 후 상위 5개
+            size_filtered.sort(key=lambda x: x["confidence"], reverse=True)
+            filtered_detections = size_filtered[:5]
+            
+            print(f"🔍 3차 완료: 최종 {len(filtered_detections)}개 선택")
+        else:
+            filtered_detections = []
+        
+        if len(filtered_detections) == 0:
+            print("📝 탐지된 객체가 없습니다.")
+        else:
+            print(f"✅ YOLO Segmentation 감지 완료: {len(filtered_detections)}개 객체")
+        
+        return filtered_detections
+        
+    except Exception as e:
+        print(f"❌ YOLO Segmentation 추론 실패: {e}")
+        return []
