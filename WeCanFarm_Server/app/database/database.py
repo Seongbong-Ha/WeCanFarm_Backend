@@ -1,4 +1,3 @@
-# WeCanFarm_Server/app/database/database.py
 import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
