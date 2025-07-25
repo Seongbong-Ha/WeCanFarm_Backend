@@ -77,47 +77,46 @@ def get_dashboard_stats(db: Session) -> Dict[str, Any]:
         func.date(AnalysisRequest.created_at) == today
     ).count()
     
-    # 3. 작물별 분석량 (JSON에서 추출 필요)
-    # 일단 간단하게 요청 수로 계산
-    crop_analysis_stats = {}
-    
-    # 모든 작물 목록 가져오기
-    crops = db.query(Crop).all()
-    for crop in crops:
-        # 해당 작물 관련 분석 요청 수 (임시로 전체 분석 수로 계산)
-        # 실제로는 detection_data JSON에서 추출해야 함
-        count = db.query(AnalysisRequest).count() if crop.name == "pepper" else 0
-        crop_analysis_stats[crop.name] = count
-    
-    # 4. 질병 감지율
+    # 분석 통계를 위한 완료된 결과 조회 (한 번만 조회)
     completed_results = db.query(AnalysisResult).filter(
         AnalysisResult.processing_status == "성공"
     ).all()
     
+    # 3. 작물별 분석량 - 실제 DB 데이터에서 계산
+    crop_analysis_stats = {"pepper": 0, "tomato": 0, "cucumber": 0}
+    
+    # 완료된 분석 결과에서 작물별 감지 횟수 계산
+    for result in completed_results:
+        if result.detection_data and isinstance(result.detection_data, list):
+            for detection in result.detection_data:
+                crop_type = detection.get('crop_type', '')
+                if crop_type in crop_analysis_stats:
+                    crop_analysis_stats[crop_type] += 1
+    
+    # 4. 질병 감지율 - 실제 DB 데이터에서 계산
     total_detections = 0
     normal_detections = 0
     disease_detections = 0
+    disease_stats = {"정상": 0, "고추점무늬병": 0, "고추마일드모틀바이러스": 0}
     
     for result in completed_results:
         if result.detection_data and isinstance(result.detection_data, list):
             for detection in result.detection_data:
                 total_detections += 1
-                if detection.get('disease_status') == '정상':
+                disease_status = detection.get('disease_status', '')
+                
+                if disease_status == '정상':
                     normal_detections += 1
-                else:
+                    disease_stats["정상"] += 1
+                elif disease_status == '고추점무늬병':
                     disease_detections += 1
-    
-    # 질병별 통계
-    disease_stats = {}
-    diseases = db.query(Disease).all()
-    for disease in diseases:
-        # 실제로는 detection_data에서 추출해야 함
-        if disease.name == "normal_0":
-            disease_stats["정상"] = normal_detections
-        elif disease.name == "BacterialSpot_4":
-            disease_stats["고추점무늬병"] = disease_detections // 2 if disease_detections > 0 else 0
-        elif disease.name == "PMMoV_3":
-            disease_stats["고추마일드모틀바이러스"] = disease_detections // 2 if disease_detections > 0 else 0
+                    disease_stats["고추점무늬병"] += 1
+                elif disease_status == '고추마일드모틀바이러스':
+                    disease_detections += 1
+                    disease_stats["고추마일드모틀바이러스"] += 1
+                else:
+                    # 기타 질병도 질병으로 분류
+                    disease_detections += 1
     
     # 5. 성공률 계산
     total_requests = db.query(AnalysisRequest).count()
