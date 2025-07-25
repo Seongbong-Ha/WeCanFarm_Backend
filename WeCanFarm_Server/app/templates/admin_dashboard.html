@@ -1,0 +1,307 @@
+<!-- WeCanFarm_Server/app/templates/admin_dashboard.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WeCanFarm 관리자 대시보드</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 0;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border-left: 5px solid #667eea;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .stat-card h3 {
+            color: #667eea;
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .stat-card h3::before {
+            content: "📊";
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            font-weight: 500;
+            color: #666;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #333;
+        }
+
+        .stat-value.highlight {
+            color: #667eea;
+        }
+
+        .stat-value.success {
+            color: #27ae60;
+        }
+
+        .stat-value.warning {
+            color: #f39c12;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .last-updated {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+            margin-top: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+
+        /* 반응형 디자인 */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .container {
+                padding: 20px 15px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .stat-card {
+                padding: 20px;
+            }
+        }
+
+        /* 아이콘 스타일 */
+        .user-stats h3::before { content: "👥"; }
+        .analysis-stats h3::before { content: "📈"; }
+        .crop-stats h3::before { content: "🌱"; }
+        .disease-stats h3::before { content: "🦠"; }
+        .detection-stats h3::before { content: "🎯"; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌱 WeCanFarm 관리자 대시보드</h1>
+        <p>농작물 질병 분석 서비스 통계 및 관리</p>
+    </div>
+
+    <div class="container">
+        <button class="refresh-btn" onclick="refreshData()">🔄 데이터 새로고침</button>
+        
+        <div id="loading" class="loading" style="display: none;">
+            데이터를 불러오는 중...
+        </div>
+
+        <div class="stats-grid" id="statsGrid">
+            <!-- 1. 사용자 통계 -->
+            <div class="stat-card user-stats">
+                <h3>사용자 통계</h3>
+                <div class="stat-item">
+                    <span class="stat-label">총 사용자 수</span>
+                    <span class="stat-value highlight">{{ stats.user_stats.total_users }}명</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">활성 사용자</span>
+                    <span class="stat-value success">{{ stats.user_stats.active_users }}명</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">신규 가입자 (30일)</span>
+                    <span class="stat-value">{{ stats.user_stats.new_users_30d }}명</span>
+                </div>
+                {% for role, count in stats.user_stats.user_types.items() %}
+                <div class="stat-item">
+                    <span class="stat-label">{{ role }}</span>
+                    <span class="stat-value">{{ count }}명</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- 2. 분석 통계 -->
+            <div class="stat-card analysis-stats">
+                <h3>분석 통계</h3>
+                <div class="stat-item">
+                    <span class="stat-label">총 분석 횟수</span>
+                    <span class="stat-value highlight">{{ stats.analysis_stats.total_analyses }}회</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">최근 30일 분석</span>
+                    <span class="stat-value">{{ stats.analysis_stats.analyses_30d }}회</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">오늘 분석</span>
+                    <span class="stat-value warning">{{ stats.analysis_stats.today_analyses }}회</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">성공률</span>
+                    <span class="stat-value success">{{ stats.analysis_stats.success_rate }}%</span>
+                </div>
+            </div>
+
+            <!-- 3. 작물별 분석량 -->
+            <div class="stat-card crop-stats">
+                <h3>작물별 분석량</h3>
+                {% for crop, count in stats.crop_stats.items() %}
+                <div class="stat-item">
+                    <span class="stat-label">{{ crop }}</span>
+                    <span class="stat-value">{{ count }}회</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- 4. 질병 감지 통계 -->
+            <div class="stat-card disease-stats">
+                <h3>질병 감지 통계</h3>
+                {% for disease, count in stats.disease_stats.items() %}
+                <div class="stat-item">
+                    <span class="stat-label">{{ disease }}</span>
+                    <span class="stat-value">{{ count }}건</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- 5. 검출 요약 -->
+            <div class="stat-card detection-stats">
+                <h3>검출 요약</h3>
+                <div class="stat-item">
+                    <span class="stat-label">총 검출 객체</span>
+                    <span class="stat-value highlight">{{ stats.detection_summary.total_detections }}개</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">정상 비율</span>
+                    <span class="stat-value success">{{ stats.detection_summary.normal_rate }}%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">질병 비율</span>
+                    <span class="stat-value warning">{{ stats.detection_summary.disease_rate }}%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="last-updated">
+            마지막 업데이트: {{ stats.last_updated }}
+        </div>
+    </div>
+
+    <script>
+        async function refreshData() {
+            const loading = document.getElementById('loading');
+            const statsGrid = document.getElementById('statsGrid');
+            
+            loading.style.display = 'block';
+            statsGrid.style.opacity = '0.5';
+            
+            try {
+                const response = await fetch('/admin/dashboard/api');
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 성공시 페이지 새로고침 (실제로는 동적 업데이트 가능)
+                    window.location.reload();
+                } else {
+                    alert('데이터 새로고침 실패: ' + result.error);
+                }
+            } catch (error) {
+                alert('네트워크 오류: ' + error.message);
+            } finally {
+                loading.style.display = 'none';
+                statsGrid.style.opacity = '1';
+            }
+        }
+
+        // 자동 새로고침 (5분마다)
+        setInterval(refreshData, 300000);
+    </script>
+</body>
+</html>

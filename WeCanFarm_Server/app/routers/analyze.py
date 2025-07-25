@@ -11,24 +11,6 @@ from ..services.pipeline import process_image_pipeline, process_single_crop_anal
 
 router = APIRouter()
 
-@router.post("/debug_analyze")
-async def debug_analyze(request: Request):
-    """디버깅용 - raw 요청 확인"""
-    try:
-        body = await request.body()
-        print(f"🔍 Raw body: {body}")
-        print(f"🔍 Content-Type: {request.headers.get('content-type')}")
-        
-        # JSON 파싱 시도
-        json_data = json.loads(body)
-        print(f"🔍 Parsed JSON: {json_data}")
-        print(f"🔍 JSON keys: {list(json_data.keys())}")
-        
-        return {"status": "success", "received": json_data}
-    except Exception as e:
-        print(f"❌ Debug error: {e}")
-        return {"error": str(e)}
-
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_image(req: AnalyzeRequest):
     """
