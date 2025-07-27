@@ -1,46 +1,54 @@
 import os
-from fastapi import FastAPI,Form, Request
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .routers import analyze, admin, auth
+
+# FastAPI 앱 생성
+app = FastAPI(
+    title="WeCanFarm API",
+    description="농작물 질병 분석 API 서버",
+    version="1.0.0",
+    docs_url="/api/docs",  # API 문서 경로
+    redoc_url="/api/redoc"
+)
+
+# CORS 설정 (안드로이드 앱 접근 허용)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 실제 배포시에는 안드로이드 앱 도메인만 허용
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API 라우터 등록
+app.include_router(analyze.router, prefix="/api", tags=["analyze"])
+app.include_router(auth.router, prefix="/api")  # tags 제거 (auth.py에서 이미 설정)
+app.include_router(admin.router, tags=["admin"])  # prefix 제거
+
+# 메인 페이지 - 관리자 대시보드로 리다이렉트
+@app.get("/", tags=["redirect"])
+async def root():
+    """메인 페이지 - 관리자 대시보드로 리다이렉트"""
+    return RedirectResponse(url="/admin/dashboard")
+
+# 관리자 대시보드만 HTML 응답으로 유지
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-
-from .routers import analyze, webanalyze, admin, auth
-
-app = FastAPI()
-app.include_router(analyze.router)
-app.include_router(webanalyze.router)
-app.include_router(admin.router)
-app.include_router(auth.router)
+from fastapi.responses import RedirectResponse
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-# ✅ 경로 로그로 확인
-print("📁 TEMPLATE_DIR:", TEMPLATE_DIR)
-print("📄 index.html 존재 여부:", os.path.exists(os.path.join(TEMPLATE_DIR, "index.html")))
+# 정적 파일 및 템플릿 (관리자 대시보드용만)
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-templates = Jinja2Templates(directory=TEMPLATE_DIR)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# 기존 admin 리다이렉트는 제거 (중복)
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-
-# ✅ result.html 페이지
-@app.post("/result", response_class=HTMLResponse)
-async def post_result(request: Request, content: str = Form(...)):
-    return templates.TemplateResponse("result.html", {"request": request, "content": content})
-
-# 관리자 대시보드 메인 리다이렉트
-@app.get("/admin")
-async def admin_redirect():
-    """관리자 페이지 리다이렉트"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/admin/dashboard")
-
-print("📁 현재 BASE_DIR:", BASE_DIR)
-print("📁 TEMPLATE_DIR:", TEMPLATE_DIR)
-print("📁 존재 여부:", os.path.exists(TEMPLATE_DIR))
-print("📄 index.html 존재 여부:", os.path.exists(os.path.join(TEMPLATE_DIR, "index.html")))
+print("✅ WeCanFarm API 서버 초기화 완료")
+print("📱 안드로이드 앱 전용 API 서버 모드")
+print("📊 관리자 대시보드: /admin/dashboard")
+print("📖 API 문서: /api/docs")

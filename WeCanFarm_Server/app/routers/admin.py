@@ -10,14 +10,14 @@ import os
 from ..database.database import get_db
 from ..database.models import User, AnalysisRequest, AnalysisResult, Crop, Disease, UserRole
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter()
 
-# 템플릿 설정
+# 템플릿 설정 (관리자 대시보드용만)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../templates"))
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/admin/dashboard", response_class=HTMLResponse)
 async def admin_dashboard_page(request: Request, db: Session = Depends(get_db)):
     """관리자 대시보드 메인 페이지"""
     try:
@@ -29,12 +29,13 @@ async def admin_dashboard_page(request: Request, db: Session = Depends(get_db)):
             "stats": stats
         })
     except Exception as e:
-        return templates.TemplateResponse("error.html", {
-            "request": request,
-            "error_message": f"대시보드 로딩 실패: {str(e)}"
-        })
+        # admin_dashboard.html만 남기고 error.html은 제거했으므로 JSON 응답
+        return {
+            "error": f"대시보드 로딩 실패: {str(e)}",
+            "status": "error"
+        }
 
-@router.get("/dashboard/api")
+@router.get("/admin/dashboard/api")
 async def get_dashboard_stats_api(db: Session = Depends(get_db)):
     """대시보드 통계 데이터 API (AJAX용)"""
     try:
@@ -43,8 +44,25 @@ async def get_dashboard_stats_api(db: Session = Depends(get_db)):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@router.get("/admin/stats")
+async def get_admin_stats(db: Session = Depends(get_db)):
+    """관리자 통계 API (안드로이드 앱용)"""
+    try:
+        stats = get_dashboard_stats(db)
+        return {
+            "success": True,
+            "data": stats,
+            "message": "통계 조회 성공"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "통계 조회 실패"
+        }
+
 def get_dashboard_stats(db: Session) -> Dict[str, Any]:
-    """대시보드 통계 데이터 수집"""
+    """대시보드 통계 데이터 수집 (기존과 동일)"""
     
     # 현재 시간 기준
     now = datetime.now()
@@ -77,7 +95,7 @@ def get_dashboard_stats(db: Session) -> Dict[str, Any]:
         func.date(AnalysisRequest.created_at) == today
     ).count()
     
-    # 분석 통계를 위한 완료된 결과 조회 (한 번만 조회)
+    # 분석 통계를 위한 완료된 결과 조회
     completed_results = db.query(AnalysisResult).filter(
         AnalysisResult.processing_status == "성공"
     ).all()
