@@ -24,10 +24,3 @@ class SingleAnalyzeResponse(BaseModel):
     crop_type: str           # 작물 종류
     disease_status: str      # 질병 상태
     confidence: float        # 신뢰도
-
-# 웹 UI용 응답 (기존 호환성 유지)
-class WebAnalyzeResult(BaseModel):
-    """웹 UI용 분석 결과"""
-    crop_type: str           # 작물 종류
-    disease_status: str      # 질병 상태
-    confidence: Optional[float] = None  # 신뢰도 (선택적)
