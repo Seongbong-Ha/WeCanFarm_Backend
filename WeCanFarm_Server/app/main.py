@@ -4,12 +4,13 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 
-from .routers import analyze, webanalyze, admin
+from .routers import analyze, webanalyze, admin, auth
 
 app = FastAPI()
 app.include_router(analyze.router)
 app.include_router(webanalyze.router)
 app.include_router(admin.router)
+app.include_router(auth.router)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
