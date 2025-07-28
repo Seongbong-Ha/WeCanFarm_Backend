@@ -106,11 +106,13 @@ POST /api/auth/register
 **Request:**
 ```json
 {
-  "username": "string",
-  "email": "string", 
-  "password": "string",
-  "full_name": "string"
+  "username": "testuser", 
+  "email": "test@example.com",
+  "password": "password123",
+  "full_name": "Test User",
+  "role": "USER"  // "USER" 또는 "FARMER"
 }
+
 ```
 
 **Response (200):**
@@ -137,10 +139,11 @@ POST /api/auth/login
 **Response (200):**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer",
+  "access_token": "eyJ...",
+  "token_type": "bearer", 
   "user_id": 1,
-  "username": "testuser"
+  "username": "testuser",
+  "role": "USER"  // 사용자 역할 정보
 }
 ```
 

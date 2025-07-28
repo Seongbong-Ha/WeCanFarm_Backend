@@ -47,6 +47,6 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
     if not user:
         user = UserCRUD.get_by_email(db, username)  # 이메일로도 로그인 가능
     
-    if not user or not verify_password(password, user.password):
+    if not user or not verify_password(password, user.password_hash):
         return None
     return user

@@ -1,5 +1,5 @@
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -8,14 +8,14 @@ from jwt import PyJWTError
 
 from ..database.database import get_db
 from ..database.models import UserCRUD, UserRole, User
-from ..schemas.auth import UserRegister, UserLogin, Token
+from ..schemas.auth import UserRegister, UserLogin, Token, RegisterUserRole, RegisterResponse
 from ..auth.auth import (
     authenticate_user, 
     create_access_token, 
     get_password_hash,
     ACCESS_TOKEN_EXPIRE_MINUTES,
-    SECRET_KEY,  # JWT 시크릿 키
-    ALGORITHM   # JWT 알고리즘
+    SECRET_KEY,
+    ALGORITHM
 )
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -27,9 +27,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """
-    JWT 토큰에서 현재 사용자 정보를 가져오는 함수
-    """
+    """JWT 토큰에서 현재 사용자 정보를 가져오는 함수"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="인증 정보를 확인할 수 없습니다",
@@ -37,23 +35,19 @@ async def get_current_user(
     )
     
     try:
-        # JWT 토큰 디코딩
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
-            
     except PyJWTError:
         raise credentials_exception
     
-    # 사용자 ID로 DB에서 사용자 정보 조회
     try:
         user_id_int = int(user_id)
         user = UserCRUD.get_by_id(db, user_id_int)
         if user is None:
             raise credentials_exception
             
-        # 비활성 사용자 체크
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -64,14 +58,11 @@ async def get_current_user(
         
     except (ValueError, TypeError):
         raise credentials_exception
-    except Exception as e:
-        print(f"❌ 사용자 조회 실패: {e}")
+    except Exception:
         raise credentials_exception
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
-    """
-    활성 사용자만 가져오는 함수 (추가 검증)
-    """
+    """활성 사용자만 가져오는 함수"""
     if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
@@ -80,9 +71,7 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     return current_user
 
 async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    """
-    관리자 권한 사용자만 가져오는 함수
-    """
+    """관리자 권한 사용자만 가져오는 함수"""
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -90,9 +79,10 @@ async def get_admin_user(current_user: User = Depends(get_current_user)) -> User
         )
     return current_user
 
-@router.post("/register")
-async def register(user_data: UserRegister, db: Session = Depends(get_db)):
-    """회원가입"""
+@router.post("/register", response_model=RegisterResponse)
+async def register(request: Request, user_data: UserRegister, db: Session = Depends(get_db)):
+    """회원가입 - 역할 선택 포함"""
+    
     try:
         # 사용자명 중복 체크
         existing_user = UserCRUD.get_by_username(db, user_data.username)
@@ -113,31 +103,50 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         # 비밀번호 해싱
         hashed_password = get_password_hash(user_data.password)
         
-        # 사용자 생성 (기본 USER 역할)
+        # 역할 변환 (RegisterUserRole -> UserRole)
+        if user_data.role == RegisterUserRole.FARMER:
+            db_role = UserRole.FARMER
+        else:
+            db_role = UserRole.USER
+        
+        # 사용자 생성
         new_user = UserCRUD.create(
             db=db,
             username=user_data.username,
             email=user_data.email,
             password_hash=hashed_password,
             full_name=user_data.full_name,
-            role=UserRole.USER
+            role=db_role
         )
         
-        print(f"✅ 새 사용자 등록: {new_user.username} ({new_user.email})")
+        # 데이터베이스 커밋
+        try:
+            db.commit()
+            db.refresh(new_user)
+        except Exception:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="회원가입 처리 중 데이터베이스 오류가 발생했습니다"
+            )
         
-        return {"message": "회원가입이 완료되었습니다", "user_id": new_user.id}
+        # 성공 응답
+        return RegisterResponse(
+            message="회원가입이 완료되었습니다",
+            user_id=new_user.id
+        )
         
-    except HTTPException as he:
-        raise he
+    except HTTPException:
+        db.rollback()
+        raise
     except IntegrityError:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="사용자명 또는 이메일이 이미 사용 중입니다"
         )
-    except Exception as e:
+    except Exception:
         db.rollback()
-        print(f"❌ 회원가입 실패: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="회원가입 처리 중 오류가 발생했습니다"
@@ -147,7 +156,6 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
 async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     """로그인"""
     try:
-        # 사용자 인증
         user = authenticate_user(db, user_credentials.username, user_credentials.password)
         if not user:
             raise HTTPException(
@@ -156,33 +164,29 @@ async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # 비활성 사용자 체크
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="비활성화된 계정입니다"
             )
         
-        # 액세스 토큰 생성
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": str(user.id)}, 
             expires_delta=access_token_expires
         )
         
-        print(f"✅ 로그인 성공: {user.username}")
-        
         return Token(
             access_token=access_token,
             token_type="bearer",
             user_id=user.id,
-            username=user.username
+            username=user.username,
+            role=user.role.value  # 역할 정보 추가
         )
         
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"❌ 로그인 실패: {e}")
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="로그인 처리 중 오류가 발생했습니다"
@@ -190,9 +194,7 @@ async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
 
 @router.get("/me")
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """
-    현재 로그인한 사용자 정보 조회
-    """
+    """현재 로그인한 사용자 정보 조회"""
     return {
         "user_id": current_user.id,
         "username": current_user.username,
@@ -200,41 +202,33 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "full_name": current_user.full_name,
         "role": current_user.role.value,
         "is_active": current_user.is_active,
-        "created_at": current_user.created_at
+        "created_at": current_user.created_at.isoformat()
     }
 
 @router.post("/logout")
 async def logout(current_user: User = Depends(get_current_user)):
-    """
-    로그아웃 (클라이언트에서 토큰 삭제 지시)
-    """
-    print(f"✅ 로그아웃: {current_user.username}")
+    """로그아웃"""
     return {"message": "로그아웃되었습니다"}
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=Token)
 async def refresh_token(current_user: User = Depends(get_current_user)):
-    """
-    토큰 갱신
-    """
+    """토큰 갱신"""
     try:
-        # 새로운 액세스 토큰 생성
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": str(current_user.id)}, 
             expires_delta=access_token_expires
         )
         
-        print(f"✅ 토큰 갱신: {current_user.username}")
-        
         return Token(
             access_token=access_token,
             token_type="bearer",
             user_id=current_user.id,
-            username=current_user.username
+            username=current_user.username,
+            role=current_user.role.value  # 역할 정보 추가
         )
         
-    except Exception as e:
-        print(f"❌ 토큰 갱신 실패: {e}")
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="토큰 갱신 중 오류가 발생했습니다"
