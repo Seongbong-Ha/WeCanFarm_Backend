@@ -23,11 +23,16 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 # JWT 토큰 스키마
 security = HTTPBearer()
 
+# app/routers/auth.py의 get_current_user 함수를 다음과 같이 수정
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """JWT 토큰에서 현재 사용자 정보를 가져오는 함수"""
+    """JWT 토큰에서 현재 사용자 정보를 가져오는 함수 - 완전 디버깅 버전"""
+    
+    print("🚨 === GET_CURRENT_USER 디버깅 시작 ===")
+    
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="인증 정보를 확인할 수 없습니다",
@@ -35,30 +40,72 @@ async def get_current_user(
     )
     
     try:
+        print(f"🔍 step 1: credentials 확인")
+        print(f"   - credentials: {credentials}")
+        print(f"   - credentials.credentials: {credentials.credentials[:50] if credentials and credentials.credentials else 'NONE'}...")
+        
+        if not credentials or not credentials.credentials:
+            print("❌ step 1: credentials가 없음")
+            raise credentials_exception
+        
+        print(f"🔍 step 2: JWT 디코딩 시도")
+        # SECRET_KEY와 ALGORITHM import
+        from ..auth.auth import SECRET_KEY, ALGORITHM
+        print(f"   - SECRET_KEY 길이: {len(SECRET_KEY)}")
+        print(f"   - ALGORITHM: {ALGORITHM}")
+        
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        print(f"✅ step 2: JWT 디코딩 성공")
+        print(f"   - payload: {payload}")
+        
         user_id: str = payload.get("sub")
         if user_id is None:
+            print("❌ step 2: user_id가 payload에 없음")
             raise credentials_exception
-    except PyJWTError:
+            
+        print(f"🔍 step 3: 사용자 조회 시도")
+        print(f"   - user_id: {user_id}")
+        
+    except PyJWTError as e:
+        print(f"❌ step 2: JWT 디코딩 실패 - {type(e).__name__}: {e}")
+        raise credentials_exception
+    except Exception as e:
+        print(f"❌ step 2: 예상치 못한 디코딩 에러 - {type(e).__name__}: {e}")
         raise credentials_exception
     
     try:
         user_id_int = int(user_id)
+        print(f"   - user_id_int: {user_id_int}")
+        
         user = UserCRUD.get_by_id(db, user_id_int)
         if user is None:
+            print(f"❌ step 3: 사용자 없음 (ID: {user_id_int})")
             raise credentials_exception
             
+        print(f"✅ step 3: 사용자 발견")
+        print(f"   - username: {user.username}")
+        print(f"   - is_active: {user.is_active}")
+            
         if not user.is_active:
+            print(f"❌ step 4: 비활성 사용자")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="비활성화된 계정입니다"
             )
             
+        print(f"✅ === GET_CURRENT_USER 완료: {user.username} ===")
         return user
         
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:
+        print(f"❌ step 3: user_id 변환 실패 - {e}")
         raise credentials_exception
-    except Exception:
+    except HTTPException as he:
+        print(f"❌ step 4: HTTP 예외 - {he.detail}")
+        raise he
+    except Exception as e:
+        print(f"❌ step 3: DB 조회 실패 - {type(e).__name__}: {e}")
+        import traceback
+        print(f"   스택트레이스: {traceback.format_exc()}")
         raise credentials_exception
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:

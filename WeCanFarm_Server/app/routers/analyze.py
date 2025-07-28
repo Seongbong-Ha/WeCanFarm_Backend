@@ -29,10 +29,18 @@ router = APIRouter()
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_image(
-    req: AnalyzeRequest, 
+    req: AnalyzeRequest,
+    request: Request,  # Request 추가 
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    
+    print("🔍 [AUTH DEBUG] === 인증 디버깅 시작 ===")
+    print(f"🔍 [AUTH DEBUG] Authorization 헤더: {request.headers.get('authorization', 'NONE')}")
+    print(f"🔍 [AUTH DEBUG] 현재 사용자: {current_user.username if current_user else 'NONE'}")
+    print(f"🔍 [AUTH DEBUG] 사용자 ID: {current_user.id if current_user else 'NONE'}")
+    print("🔍 [AUTH DEBUG] === 디버깅 끝 ===")
+    
     """
     이미지 분석 API (전체 파이프라인) - JWT 인증 버전
     - YOLO 객체 감지 → ResNet 질병 분류 → 결과 시각화 → DB 저장
