@@ -265,36 +265,3 @@ WeCanFarm_Server/
 ├── .env                      # 환경 변수
 └── README.md                 # 프로젝트 문서
 ```
-
-## 👨‍💻 개발 가이드
-
-### 새로운 작물 모델 추가
-
-1. **모델 파일 추가**: `app/models/` 디렉토리에 새 모델 파일 배치
-2. **ModelManager 수정**: `model_manager.py`에서 새 작물 로딩 함수 추가
-3. **클래스 라벨 정의**: 새 작물의 질병 클래스 매핑 추가
-
-```python
-# model_manager.py 예시
-def _load_tomato_model(self):
-    model_path = os.path.join(os.path.dirname(__file__), '../models/tomato_disease_model.keras')
-    self.models['tomato'] = tf.keras.models.load_model(model_path)
-    
-    self.class_labels['tomato'] = {
-        0: "healthy",
-        1: "early_blight",
-        2: "late_blight"
-    }
-```
-
-### API 엔드포인트 추가
-
-1. **라우터 생성**: `routers/` 디렉토리에 새 라우터 파일 생성
-2. **스키마 정의**: `schemas/` 디렉토리에 요청/응답 모델 정의
-3. **메인 앱 등록**: `main.py`에서 새 라우터 등록
-
-### 데이터베이스 모델 수정
-
-1. **모델 클래스 수정**: `database/models.py`에서 모델 정의 변경
-2. **마이그레이션 실행**: Alembic을 이용한 DB 스키마 변경
-3. **CRUD 함수 업데이트**: 새 필드에 대한 CRUD 함수 추가
