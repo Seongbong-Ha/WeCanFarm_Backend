@@ -9,6 +9,7 @@ YOLO 객체 감지와 ResNet 질병 분류 모델을 통합하여 농작물 이�
 - [기능](#-기능)
 - [기술 스택](#-기술-스택)
 - [데이터 파이프라인](#-데이터-파이프라인)
+- [Airflow 데이터 오케스트레이션](#-airflow-데이터-오케스트레이션)
 - [설치 및 실행](#-설치-및-실행)
 - [API 문서](#-api-문서)
 - [프로젝트 구조](#-프로젝트-구조)
@@ -23,6 +24,7 @@ YOLO 객체 감지와 ResNet 질병 분류 모델을 통합하여 농작물 이�
 - 💾 **분석 결과 데이터베이스 저장 및 데이터 마트 구축**
 - 📱 **Android 앱 연동 지원**
 - 🔄 **재사용 가능한 데이터 모델 제공**
+- 🛠️ **Airflow 기반 자동화된 데이터 파이프라인**
 
 ## 🛠 기술 스택
 
@@ -45,11 +47,14 @@ YOLO 객체 감지와 ResNet 질병 분류 모델을 통합하여 농작물 이�
 - **Data Validation**: SQLAlchemy ORM
 - **Performance Monitoring**: 분석 요청/결과 추적
 - **Data Quality**: 이미지 유효성 검사 및 전처리
+- **Workflow Orchestration**: Apache Airflow 3.0+
+- **Data Pipeline**: PostgreSQL Hook, Python Operators
 
 ### DevOps
 - **Server**: Uvicorn
 - **API Docs**: Swagger UI
 - **Environment**: Python 3.8+
+- **Containerization**: Docker, Docker Compose
 
 ## 🔄 데이터 파이프라인
 
@@ -73,6 +78,88 @@ YOLO 객체 감지와 ResNet 질병 분류 모델을 통합하여 농작물 이�
 - 이미지 유효성 검사 (크기, 포맷, 품질)
 - 모델 예측 신뢰도 임계값 적용
 - 분석 결과 일관성 검증
+
+## 🛠️ Airflow 데이터 오케스트레이션
+
+### 개요
+Apache Airflow를 활용하여 WeCanFarm의 데이터 파이프라인을 자동화하고 모니터링합니다. 일일 통계 수집, 데이터 품질 검증, 성능 모니터링 등의 작업을 스케줄링된 DAG로 관리합니다.
+
+### 주요 DAG 목록
+
+#### 1. 연결 테스트 DAG (`wecanfarm_connection_test`)
+- **목적**: WeCanFarm 데이터베이스 연결 및 테이블 상태 확인
+- **스케줄**: 수동 실행
+- **주요 작업**:
+  - PostgreSQL 연결 테스트
+  - 기본 테이블 존재 확인 (users, analysis_requests, analysis_results)
+  - 테이블별 레코드 수 조회
+  - 데이터베이스 버전 확인
+
+#### 2. 일일 통계 수집 DAG (`wecanfarm_daily_stats`)
+- **목적**: 일일 서비스 이용 통계 자동 수집 및 리포트 생성
+- **스케줄**: 매일 오전 9시 (KST)
+- **주요 작업**:
+  - 신규 가입자 수 집계
+  - 일일 분석 요청 건수 계산
+  - 분석 성공률 산출
+  - 누적 사용자 통계 업데이트
+  - 요약 리포트 생성
+
+### Airflow 설정
+
+#### 환경 구성
+- **Version**: Apache Airflow 3.0.3
+- **Executor**: CeleryExecutor
+- **Database**: PostgreSQL 13
+- **Message Broker**: Redis
+- **Container**: Docker Compose
+
+#### 네트워크 구성
+```
+WeCanFarm PostgreSQL (port 5432) ←→ Airflow Network (airflow_default)
+                ↕
+Airflow Scheduler/Worker/WebServer ←→ Airflow PostgreSQL (metadata)
+```
+
+#### Connection 설정
+- **Connection ID**: `wecanfarm_db`
+- **Connection Type**: Postgres
+- **Host**: `wecanfarm-postgres` (Docker 내부 네트워크)
+- **Database**: `wecanfarm_db`
+- **User**: `wecanfarm_user`
+
+### 실행 결과 예시
+
+#### 일일 통계 리포트
+```
+📊 WeCanFarm 일일 리포트 - 2025-07-30
+==================================================
+👥 신규 가입자: 2명
+📈 분석 요청: 15건
+✅ 성공한 분석: 13건
+📊 성공률: 86.7%
+👥 총 사용자: 25명 (누적)
+==================================================
+```
+
+### 모니터링 및 알림
+- **웹 UI**: http://localhost:8080 (Airflow Dashboard)
+- **로그 수집**: 모든 Task 실행 로그 중앙화
+- **에러 알림**: Task 실패 시 자동 재시도 및 로깅
+- **성능 메트릭**: Task 실행 시간 및 성공률 추적
+
+### Airflow 폴더 구조
+```
+airflow/
+├── docker-compose.yaml        # Airflow 서비스 정의
+├── dags/                      # DAG 파일들
+│   ├── wecanfarm_connection_test.py
+│   └── wecanfarm_daily_stats.py
+├── logs/                      # 실행 로그 (gitignore)
+├── plugins/                   # 커스텀 플러그인
+├── config/                    # 설정 파일
+└── .env                       # 환경 변수 (gitignore)
+```
 
 ## 🚀 설치 및 실행
 
@@ -113,9 +200,24 @@ cd WeCanFarm_Server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 7. 접속 확인
+### 7. Airflow 실행 (선택사항)
+```bash
+cd airflow
+
+# Airflow 초기화
+docker-compose up airflow-init
+
+# Airflow 서비스 실행
+docker-compose up -d
+
+# Airflow 웹 UI 접속
+# http://localhost:8080 (airflow/airflow)
+```
+
+### 8. 접속 확인
 - **API 문서**: http://localhost:8000/api/docs
 - **관리자 대시보드**: http://localhost:8000/admin/dashboard
+- **Airflow 대시보드**: http://localhost:8080 (선택사항)
 
 ## 📱 API 문서 (Android Kotlin)
 
@@ -295,8 +397,17 @@ WeCanFarm_Server/
 │   │   └── yolo_v1.pt
 │   └── templates/             # HTML 템플릿
 │       └── admin_dashboard.html # 데이터 마트 시각화
+├── airflow/                   # Airflow 데이터 파이프라인
+│   ├── docker-compose.yaml    # Airflow 서비스 정의
+│   ├── dags/                  # DAG 파일들
+│   │   ├── wecanfarm_connection_test.py  # DB 연결 테스트
+│   │   └── wecanfarm_daily_stats.py      # 일일 통계 수집
+│   ├── logs/                  # 실행 로그 (gitignore)
+│   ├── plugins/               # 커스텀 플러그인
+│   └── .env                   # Airflow 환경 변수
 ├── requirements.txt           # Python 의존성
 ├── .env                      # 환경 변수
+├── .gitignore                # Git 제외 파일 목록
 └── README.md                 # 프로젝트 문서
 ```
 
@@ -310,3 +421,6 @@ WeCanFarm_Server/
 
 ### 통합 파이프라인
 기존의 분절된 이미지 분석 과정을 하나의 통합 파이프라인으로 구성하여 효율성을 극대화했습니다. 일회성 분석에서 벗어나 체계적인 데이터 축적이 가능하며, 파편화된 분석 정보를 통합 대시보드를 통해 한눈에 파악할 수 있습니다.
+
+### 자동화된 데이터 오케스트레이션
+Apache Airflow를 통해 데이터 수집, 처리, 분석의 전 과정을 자동화했습니다. 스케줄링된 워크플로우로 일관된 데이터 품질을 유지하며, 실시간 모니터링과 알림 시스템으로 안정적인 서비스 운영을 보장합니다. Analyst Engineer 관점에서 데이터 파이프라인의 투명성과 추적 가능성을 확보했습니다.
