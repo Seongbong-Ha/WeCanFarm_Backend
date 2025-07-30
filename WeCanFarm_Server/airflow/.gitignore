@@ -1,0 +1,105 @@
+# Airflow .gitignore
+
+# ===== 보안 관련 (절대 업로드 금지) =====
+.env
+.env.local
+.env.production
+**/passwords.txt
+**/secrets/
+airflow.cfg
+webserver_config.py
+
+# ===== Airflow 런타임 파일들 =====
+logs/
+airflow-webserver.pid
+airflow-scheduler.pid
+standalone_admin_password.txt
+webserver_config.py
+
+# ===== 데이터베이스 파일들 =====
+*.db
+*.sqlite
+*.sqlite3
+airflow.db
+metastore_db/
+
+# ===== Docker 관련 =====
+docker-compose.override.yml
+.dockerignore
+
+# ===== Python 관련 =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ===== 가상환경 =====
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# ===== IDE 관련 =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== macOS 관련 =====
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# ===== 임시 파일들 =====
+*.tmp
+*.temp
+*.log
+*.out
+*.err
+
+# ===== Airflow 플러그인 캐시 =====
+plugins/__pycache__/
+
+# ===== 테스트 관련 =====
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ===== 백업 파일들 =====
+*.bak
+*.backup
+*.old
+
+# ===== 사용자 정의 설정 파일들 =====
+config/airflow_local_settings.py
+config/custom_config.py
+
+# ===== 민감한 데이터 파일들 =====
+data/sensitive/
+credentials/
+*.key
+*.pem
+*.crt
